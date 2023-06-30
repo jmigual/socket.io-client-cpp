@@ -1,10 +1,12 @@
 #include "sio_socket.h"
 #include "internal/sio_packet.h"
 #include "internal/sio_client_impl.h"
-#include <boost/asio/deadline_timer.hpp>
-#include <boost/system/error_code.hpp>
+#include <asio/steady_timer.hpp>
+#include <asio/error_code.hpp>
 #include <queue>
+#include <chrono>
 #include <cstdarg>
+#include <functional>
 
 #if DEBUG || _DEBUG
 #define LOG(x) std::cout << x
@@ -106,7 +108,7 @@ namespace sio
     {
     public:
         
-        impl(client_impl_base *,std::string const&);
+        impl(client_impl_base *, std::string const&, message::ptr const&);
         ~impl();
         
         void on(std::string const& event_name,event_listener_aux const& func);
@@ -157,7 +159,7 @@ namespace sio
         
         void ack(int msgId,string const& name,message::list const& ack_message);
         
-        void timeout_connection(const boost::system::error_code &ec);
+        void timeout_connection(const asio::error_code &ec);
         
         void send_connect();
         
@@ -171,6 +173,7 @@ namespace sio
         
         bool m_connected;
         std::string m_nsp;
+        message::ptr m_auth;
         
         std::map<unsigned int, std::function<void (message::list const&)> > m_acks;
         
@@ -178,7 +181,7 @@ namespace sio
         
         error_listener m_error_listener;
         
-        std::unique_ptr<boost::asio::deadline_timer> m_connection_timer;
+        std::unique_ptr<asio::steady_timer> m_connection_timer;
         
         std::queue<packet> m_packet_queue;
         
@@ -226,10 +229,11 @@ namespace sio
         m_error_listener = nullptr;
     }
     
-    socket::impl::impl(client_impl_base* client, std::string const& nsp):
+    socket::impl::impl(client_impl_base *client, std::string const& nsp, message::ptr const& auth):
         m_client(client),
+        m_connected(false),
         m_nsp(nsp),
-        m_connected(false)
+        m_auth(auth)
     {
         NULL_GUARD(client);
         if(m_client->opened())
@@ -267,15 +271,11 @@ namespace sio
     void socket::impl::send_connect()
     {
         NULL_GUARD(m_client);
-        if(m_nsp == "/")
-        {
-            return;
-        }
-        packet p(packet::type_connect,m_nsp);
+        packet p(packet::type_connect, m_nsp, m_auth);
         m_client->send(p);
-        m_connection_timer.reset(new boost::asio::deadline_timer(m_client->get_io_service()));
-        boost::system::error_code ec;
-        m_connection_timer->expires_from_now(boost::posix_time::milliseconds(20000), ec);
+        m_connection_timer.reset(new asio::steady_timer(m_client->get_io_service()));
+        asio::error_code ec;
+        m_connection_timer->expires_from_now(std::chrono::milliseconds(20000), ec);
         m_connection_timer->async_wait(std::bind(&socket::impl::timeout_connection,this, std::placeholders::_1));
     }
     
@@ -289,11 +289,11 @@ namespace sio
             
             if(!m_connection_timer)
             {
-                m_connection_timer.reset(new boost::asio::deadline_timer(m_client->get_io_service()));
+                m_connection_timer.reset(new asio::steady_timer(m_client->get_io_service()));
             }
-            boost::system::error_code ec;
-            m_connection_timer->expires_from_now(boost::posix_time::milliseconds(3000), ec);
-            m_connection_timer->async_wait(lib::bind(&socket::impl::on_close, this));
+            asio::error_code ec;
+            m_connection_timer->expires_from_now(std::chrono::milliseconds(3000), ec);
+            m_connection_timer->async_wait(std::bind(&socket::impl::on_close, this));
         }
     }
     
@@ -418,7 +418,7 @@ namespace sio
 					message::list msglist(ptr->get_vector());
 					this->on_socketio_ack(p.get_pack_id(),msglist);
                 }
-				else
+                else
 				{
 					this->on_socketio_ack(p.get_pack_id(),message::list(ptr));
 				}
@@ -449,7 +449,7 @@ namespace sio
         }
     }
     
-    void socket::impl::ack(int msgId, const string &name, const message::list &ack_message)
+    void socket::impl::ack(int msgId, const string &, const message::list &ack_message)
     {
         packet p(m_nsp, ack_message.to_array_message(),msgId,true);
         send_packet(p);
@@ -475,7 +475,7 @@ namespace sio
         if(m_error_listener)m_error_listener(err_message);
     }
     
-    void socket::impl::timeout_connection(const boost::system::error_code &ec)
+    void socket::impl::timeout_connection(const asio::error_code &ec)
     {
         NULL_GUARD(m_client);
         if(ec)
@@ -525,8 +525,8 @@ namespace sio
         return socket::event_listener();
     }
     
-    socket::socket(client_impl_base* client,std::string const& nsp):
-        m_impl(new impl(client,nsp))
+    socket::socket(client_impl_base* client,std::string const& nsp,message::ptr const& auth):
+        m_impl(new impl(client,nsp,auth))
     {
     }
     

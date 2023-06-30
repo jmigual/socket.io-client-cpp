@@ -75,7 +75,7 @@ namespace sio
         std::string const& get_namespace() const;
         
     protected:
-        socket(client_impl_base*,std::string const&);
+        socket(client_impl_base*,std::string const&,message::ptr const&);
 
         void on_connected();
         
@@ -91,8 +91,8 @@ namespace sio
         
     private:
         //disable copy constructor and assign operator.
-        socket(socket const& sock){}
-        void operator=(socket const& sock){}
+        socket(socket const&){}
+        void operator=(socket const&){}
 
         class impl;
         impl *m_impl;

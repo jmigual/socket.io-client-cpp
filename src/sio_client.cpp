@@ -8,26 +8,22 @@
 #include "internal/sio_client_impl.h"
 
 using namespace websocketpp;
-using boost::posix_time::milliseconds;
 using std::stringstream;
 
 namespace sio
 {
-    client::client():
-        m_impl(new client_impl<client_type_no_tls>())
+    client::client() : m_impl(new client_impl<client_type_no_tls>({})) {}
+    
+    client::client(client_options const& options)
     {
-    }
-
-    client::client(const std::string& uri)
-    {
-        if(!client_impl_base::is_tls(uri))
+        if(!client_impl_base::is_tls(options.uri))
         {
-            m_impl = new client_impl<client_type_no_tls>(uri);
+            m_impl = new client_impl<client_type_no_tls>(options);
         }
 #if SIO_TLS
         else
         {
-            m_impl = new client_impl<client_type_tls>(uri);
+            m_impl = new client_impl<client_type_tls>(options);
         }
 #endif
     }
@@ -81,26 +77,47 @@ namespace sio
     {
         m_impl->clear_socket_listeners();
     }
+	
+    void client::set_proxy_basic_auth(const std::string& uri, const std::string& username, const std::string& password)
+    {
+        m_impl->set_proxy_basic_auth(uri, username, password);
+    }
 
     void client::connect()
     {
-        m_impl->connect(std::string(), {}, {});
+        connect("");
     }
 
     void client::connect(const std::string& uri)
     {
-        m_impl->connect(uri, {}, {});
+        m_impl->connect(uri, {}, {}, {});
+    }
+
+    void client::connect(const std::string& uri, const message::ptr& auth)
+    {
+        m_impl->connect(uri, {}, {}, auth);
     }
 
     void client::connect(const std::string& uri, const std::map<string,string>& query)
     {
-        m_impl->connect(uri, query, {});
+        m_impl->connect(uri, query, {}, {});
+    }
+
+    void client::connect(const std::string& uri, const std::map<string,string>& query, const message::ptr& auth)
+    {
+        m_impl->connect(uri, query, {}, auth);
     }
 
     void client::connect(const std::string& uri, const std::map<std::string,std::string>& query,
                          const std::map<std::string,std::string>& http_extra_headers)
     {
-        m_impl->connect(uri, query, http_extra_headers);
+        m_impl->connect(uri, query, http_extra_headers, {});
+    }
+
+    void client::connect(const std::string& uri, const std::map<std::string,std::string>& query,
+                         const std::map<std::string,std::string>& http_extra_headers, const message::ptr& auth)
+    {
+        m_impl->connect(uri, query, http_extra_headers, auth);
     }
     
     socket::ptr const& client::socket(const std::string& nsp)
@@ -143,5 +160,20 @@ namespace sio
     {
         m_impl->set_reconnect_delay_max(millis);
     }
-    
+
+    void client::set_logs_default()
+    {
+        m_impl->set_logs_default();
+    }
+
+    void client::set_logs_quiet()
+    {
+        m_impl->set_logs_quiet();
+    }
+
+    void client::set_logs_verbose()
+    {
+        m_impl->set_logs_verbose();
+    }
+
 }

@@ -11,9 +11,27 @@
 #include "sio_message.h"
 #include "sio_socket.h"
 
+namespace asio {
+    class io_context;
+}
+
 namespace sio
 {
     class client_impl_base;
+
+    struct client_options {
+        asio::io_context* io_context = nullptr;
+
+        /**
+         * @brief URI to connect after construction.
+         * @details If this is set, the constructor selects TLS or non-TLS as needed. If building
+         * the library without SIO_TLS support, you may only use http:// or ws:// schemes, or an
+         * exception is thrown. When using this constructor, you may later call connect() without
+         * passing the URI again. If you pass another URI later to connect() it must have the same
+         * scheme as the one given here, or an exception will be raised.
+         */
+        std::string uri;
+    };
     
     class client {
     public:
@@ -31,17 +49,21 @@ namespace sio
         
         typedef std::function<void(std::string const& nsp)> socket_listener;
 
-        // The default constructor builds a TLS-only or a non-TLS client depending
-        // on which library you link with.
+        /**
+         * @brief Default constructor.
+         * @details Build a TLS-only or a non-TLS client depending on which library you link with.
+         */
         client();
 
-        // This version of the constructor takes a given connection URI and selects
-        // TLS or non-TLS as needed. If building the library without SIO_TLS support,
-        // you may only use http:// or ws:// schemes, or an exception is thrown.
-        // When using this constructor, you may later call connect() without passing
-        // the URI again. If you pass another URI later to connect() it must have the
-        // same scheme as the one given here, or an exception will be raised.
-        client(const std::string& uri);
+        /**
+         * @brief Construct a new client object
+         * @details This version of the constructor is a convenience for building a client with 
+         * options from @ref client_options and the uri value set to @p uri.
+         * @param uri URI to connect after construction.
+         */
+        client(const std::string& uri) : client(client_options{nullptr, uri}) {}
+
+        client(client_options const& options);
 
         ~client();
         
@@ -69,17 +91,30 @@ namespace sio
 
         void connect(const std::string& uri);
 
+        void connect(const std::string& uri, const message::ptr& auth);
+
         void connect(const std::string& uri, const std::map<std::string,std::string>& query);
+
+        void connect(const std::string& uri, const std::map<std::string,std::string>& query, const message::ptr& auth);
 
         void connect(const std::string& uri, const std::map<std::string,std::string>& query,
                      const std::map<std::string,std::string>& http_extra_headers);
+
+        void connect(const std::string& uri, const std::map<std::string,std::string>& query,
+                     const std::map<std::string,std::string>& http_extra_headers, const message::ptr& auth);
 
         void set_reconnect_attempts(int attempts);
 
         void set_reconnect_delay(unsigned millis);
 
         void set_reconnect_delay_max(unsigned millis);
-        
+
+        void set_logs_default();
+
+        void set_logs_quiet();
+
+        void set_logs_verbose();
+
         sio::socket::ptr const& socket(const std::string& nsp = "");
         
         // Closes the connection
@@ -87,14 +122,16 @@ namespace sio
         
         void sync_close();
         
+        void set_proxy_basic_auth(const std::string& uri, const std::string& username, const std::string& password);
+		
         bool opened() const;
         
         std::string const& get_sessionid() const;
         
     private:
         //disable copy constructor and assign operator.
-        client(client const& cl){}
-        void operator=(client const& cl){}
+        client(client const&){}
+        void operator=(client const&){}
         
         client_impl_base* m_impl;
     };
